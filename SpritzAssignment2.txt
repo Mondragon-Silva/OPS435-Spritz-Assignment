@@ -1,0 +1,185 @@
+#!/bin/bash
+#
+#spritz word reading script
+#Author: Agustin Eduardo Mondragon
+#Student number: 044 880 094
+#
+#Professor: Azzad Kara
+#
+#Usage: $0 filename [speed]
+#
+#while script is running use j to decrease speed or k to increase speed
+#
+
+#This is a regex that will verify what the user input was a valid number format
+numcheck='^[0-9]+$'
+
+#assigning variables to the positional parameters
+file=$1
+speed=$2
+
+#function that will check for errors when user inputs positional parameter data
+ErrorChecking(){
+        if [ $# -eq 0 ]; then
+                echo
+                echo "Error: Usage: \$0 [Filename] [Speed]"
+                echo
+                exit 0
+        fi
+
+        if [ ! -f $file ]; then
+                echo
+                echo "Error: File $1 does not exist or is unreadable"
+                echo
+                exit 1
+        fi
+
+        if  [[ $# -eq 2 && ! ($speed =~ $numcheck) ]]; then
+                echo
+                echo "Error: Please enter a valid number"
+                echo
+                exit 2
+        fi
+
+        if [[ $# -eq 2 && $speed -lt 100 || $speed -gt 1000 ]]; then
+                echo
+                echo "Error: Enter a valid digit between 100 and 1000"
+                echo
+                exit 3
+        fi
+
+        if [ $# -eq 1 ]; then
+                speed=120
+        fi
+
+}
+
+#function that will set the speed for the words per minute to be used
+WordsPerMinute(){
+        tput cup $(($XAxis+5)) $YAxis
+        echo '                       '
+        minute=60
+        wpm=$(echo "scale=2;$minute/$speed" | bc -l )
+}
+
+#function that will set the colors for the vowels and reset color back to the original
+VowelColor(){
+        Color='\\e[0;31m'
+        original_color='\\e[0m'
+}
+
+
+#main frame to be called when calling out the words and placement for the word to be
+#displayed when called
+Frame(){
+        #X and Y axis are set at a fixed position as well as text positioning as well
+        XAxis=0
+        YAxis=25
+        YAxisText=$(($YAxis+10))
+        VerticalPosition=0
+
+        # tput is used extensively throuhgout the script to position visuals
+        tput cup $(($XAxis+1)) $YAxis
+        echo "__________ _______________"
+
+        tput cup $(($XAxis+2)) $YAxis
+        echo "          |"
+
+        tput cup $(($XAxis+4)) $YAxis
+        echo "__________|_______________"
+}
+
+#function that will wait for constant input from the user to increase or decrease the speed
+#this calls the words perminute function to update the speed increment from the speed variable
+speed(){
+        #suppress echo output display
+        stty -echo
+
+        read -s -n1 -t "0.01" Change
+                case $Change in
+                k)if [ $speed -lt 1000 ]; then
+                        speed=$(($speed+10));
+                  fi
+                        ;;
+                j)if [ $speed -gt 100 ]; then
+                        speed=$(($speed-10));
+                  fi
+                        ;;
+                esac
+        #calls function to update speed
+        WordsPerMinute $speed
+}
+
+#function that will begin timer and total time elapse when stopped or broken out by force
+Timer() {
+ if [ "$1" == "start" ]; then
+ StartTimer=$SECONDS
+ elif [ "$1" == "stop" ]; then
+ StopTimer=$SECONDS
+ TotalTime=$(($StopTimer-$StartTimer))
+ fi
+}
+
+#overall main function that will be calling previous functions to use them in calculations and display word as
+#well as vowel display positioning
+spritz(){
+        #set word counter
+        count=0
+        #assign the file contents into an array
+        words=(`cat $file`)
+        #access the array in a for loop method to then use a Vowelcount to verify how many vowels are present
+        #then used case statement to determine which letter is highlighted and positioned accordingly
+        for Word in ${words[@]}
+        do
+                clear
+                #gets the vowel count
+                VowelCount=$(tr -cd '[aeiouAEIOU]' <<< "$Word")
+                Frame
+                case ${#VowelCount} in
+                        #if there are no vowels
+                        0) tput cup $(($XAxis+3)) $(($YAxisText-$VerticalPosition))
+                        v0=$(sed -E "s/^./${Color}&${original_color}/" <<< "$Word")
+                        echo -e $v0
+                        ;;
+                        #if there is one vowel
+                        1) vowel1=$(echo $Word | tr '[A-Z]' '[a-z]' | sed "s/[aeiou]/ /" | cut -d' ' -f1)
+                           tput cup $(($XAxis+3)) $(($YAxisText-$VerticalPosition-${#vowel1}))
+                        v1=$(sed -E "s/[aeiouAEIOU]/${Color}&${original_color}/" <<< "$Word")
+                        echo -e $v1
+                        ;;
+                        #if there is more than one vowel
+                        *) vowel2=$(echo $Word | tr '[A-Z]' '[a-z]' | sed "s/[aeiou]/ /2" | cut -d' ' -f1)
+                           tput cup $(($XAxis+3)) $(($YAxisText-$VerticalPosition-${#vowel2}))
+                        v2=$(sed -E "s/[aeiouAEIOU]/${Color}&${original_color}/2" <<< "$Word")
+                        echo -e $v2
+                        ;;
+                esac
+                echo "
+                                                $speed WPM"
+                speed
+                #time to wait between printing words, this will dictate the speed
+                sleep $wpm
+                #constant count of words
+                count=$((count+1))
+        done
+}
+
+#main function to run all other functions and sequence of script.
+main(){
+trap "break" SIGINT
+
+        ErrorChecking $*
+        WordsPerMinute
+        speed
+        VowelColor
+        Frame
+        Timer start
+        spritz
+        Timer stop
+#final output of how many words counted in the total amount of time
+echo "You have read $count words in $TotalTime seconds"
+}
+#calling main function with both filename and speed
+main $1 $2
+#reset echo to original state after script main function finishes
+stty echo
